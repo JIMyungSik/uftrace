@@ -12,6 +12,7 @@
 
 #include "libmcount/mcount.h"
 #include "mcount-arch.h"
+#include "utils/utils.h"
 #include "utils/filter.h"
 #include "utils/compiler.h"
 #include "utils/script.h"
