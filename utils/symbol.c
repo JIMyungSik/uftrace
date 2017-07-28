@@ -439,22 +439,30 @@ static void sort_dynsymtab(struct symtab *dsymtab)
 	dsymtab->name_sorted = false;
 }
 
+__weak int arch_load_dynsymtab_bindnow(Elf *elf, struct symtab *dsymtab,
+				       unsigned long offset, unsigned long flags)
+{
+	return -1;
+}
+
 static int load_dynsymtab(struct symtab *dsymtab, const char *filename,
 			  unsigned long offset, unsigned long flags)
 {
 	int fd;
 	int ret = -1;
-	int idx, nr_rels = 0;
+	int idx, nr_rels = 0, nr_dyns = 0;
 	unsigned grow = SYMTAB_GROW;
 	Elf *elf;
-	Elf_Scn *dynsym_sec, *relplt_sec, *sec;
-	Elf_Data *dynsym_data, *relplt_data;
+	Elf_Scn *dynsym_sec, *relplt_sec, *dynamic_sec, *sec;
+	Elf_Data *dynsym_data, *relplt_data, *dynamic_data;
 	size_t shstr_idx, dynstr_idx = 0;
 	GElf_Ehdr ehdr;
 	GElf_Addr plt_addr = 0;
 	GElf_Addr prev_addr;
 	size_t plt_entsize = 1;
 	int rel_type = SHT_NULL;
+	bool plt_found = false;
+	bool bind_now = false;
 
 	fd = open(filename, O_RDONLY);
 	if (fd < 0) {
@@ -490,7 +498,7 @@ static int load_dynsymtab(struct symtab *dsymtab, const char *filename,
 	if (elf_getshdrstrndx(elf, &shstr_idx) < 0)
 		goto elf_error;
 
-	sec = dynsym_sec = relplt_sec = NULL;
+	sec = dynsym_sec = relplt_sec = dynamic_sec = NULL;
 	while ((sec = elf_nextscn(elf, sec)) != NULL) {
 		char *shstr;
 		GElf_Shdr shdr;
@@ -503,23 +511,64 @@ static int load_dynsymtab(struct symtab *dsymtab, const char *filename,
 		if (strcmp(shstr, ".dynsym") == 0) {
 			dynsym_sec = sec;
 			dynstr_idx = shdr.sh_link;
-		} else if (strcmp(shstr, ".rela.plt") == 0) {
+		}
+		else if (strcmp(shstr, ".rela.plt") == 0) {
 			relplt_sec = sec;
 			nr_rels = shdr.sh_size / shdr.sh_entsize;
 			rel_type = SHT_RELA;
-		} else if (strcmp(shstr, ".rel.plt") == 0) {
+		}
+		else if (strcmp(shstr, ".rel.plt") == 0) {
 			relplt_sec = sec;
 			nr_rels = shdr.sh_size / shdr.sh_entsize;
 			rel_type = SHT_REL;
-		} else if (strcmp(shstr, ".plt") == 0) {
+		}
+		else if (strcmp(shstr, ".plt") == 0) {
 			plt_addr = shdr.sh_addr;
 			plt_entsize = shdr.sh_entsize;
 		}
+		else if (strcmp(shstr, ".dynamic") == 0) {
+			dynamic_sec = sec;
+			nr_dyns = shdr.sh_size / shdr.sh_entsize;
+		}
 	}
 
-	if (dynsym_sec == NULL || plt_addr == 0) {
+	if (dynsym_sec == NULL || dynamic_sec == NULL || plt_addr == 0) {
 		pr_dbg("cannot find dynamic symbols.. skipping\n");
 		ret = 0;
+		goto out;
+	}
+
+	dynamic_data = elf_getdata(dynamic_sec, NULL);
+	if (dynamic_data == NULL)
+		goto elf_error;
+
+	for (idx = 0; idx < nr_dyns; idx++) {
+		GElf_Dyn dyn;
+
+		if (gelf_getdyn(dynamic_data, idx, &dyn) == NULL)
+			return -1;
+
+		if (dyn.d_tag == DT_JMPREL)
+			plt_found = true;
+		else if (dyn.d_tag == DT_BIND_NOW)
+			bind_now = true;
+		else if (dyn.d_tag == DT_FLAGS_1 && (dyn.d_un.d_val & DF_1_NOW))
+			bind_now = true;
+	}
+
+	if (bind_now) {
+		if (arch_load_dynsymtab_bindnow(elf, dsymtab, offset, flags) < 0) {
+			__unload_symtab(dsymtab);
+			return -1;
+		}
+
+		if (dsymtab->nr_sym)
+			sort_dynsymtab(dsymtab);
+		return 0;
+	}
+
+	if (!plt_found) {
+		pr_dbg("cannot determine dynamic symbols\n");
 		goto out;
 	}
 
@@ -544,7 +593,8 @@ static int load_dynsymtab(struct symtab *dsymtab, const char *filename,
 
 	prev_addr = plt_addr;
 
-	pr_dbg2("loading dynamic symbols from %s\n", filename);
+	pr_dbg2("loading dynamic symbols from %s (offset: %#lx)\n", filename, offset);
+
 	for (idx = 0; idx < nr_rels; idx++) {
 		GElf_Sym esym;
 		struct sym *sym;
