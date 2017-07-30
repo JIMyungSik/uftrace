@@ -237,25 +237,35 @@ void print_time_unit(uint64_t delta_nsec)
 
 void print_diff_percent(uint64_t base_nsec, uint64_t pair_nsec)
 {
-	double percent = 100.0 * (int64_t)(pair_nsec - base_nsec) / base_nsec;
-	char *color = percent > 20 ? TERM_COLOR_RED :
-		percent > 3 ? TERM_COLOR_MAGENTA :
-		percent < -20 ? TERM_COLOR_BLUE :
-		percent < -3 ? TERM_COLOR_CYAN : TERM_COLOR_NORMAL;
+	double percent = 100;
+	const char *signs[] = { "+", "-" };
+	const char *color_signs[] = {
+		TERM_COLOR_RED "+" TERM_COLOR_RESET,
+		TERM_COLOR_BLUE  "-" TERM_COLOR_RESET,
+	};
+	const char *sign;
+	int sign_idx, indent;
 
-	if (percent == 0) {
-		pr_out(" %7s ", "");
-		return;
-	}
+	if (base_nsec)
+		percent = 100.0 * (int64_t)(pair_nsec - base_nsec) / base_nsec;
 
 	/* for some error cases */
 	if (percent > 999.99)
 		percent = 999.99;
+	else if (percent < -999.99)
+		percent = -999.99;
+
+	sign_idx = (percent < 0) ? 1 : 0;
+	if (percent < 0)
+		percent = -percent;
+	indent = (percent >= 99.995) ? 0 : (percent >= 9.995) ? 1 : 2;
 
 	if (out_color == COLOR_ON)
-		pr_out(" %s%+7.2f%%%s", color, percent, TERM_COLOR_RESET);
+		sign = color_signs[sign_idx];
 	else
-		pr_out(" %+7.2f%%", percent);
+		sign = signs[sign_idx];
+
+	pr_out("%*s%s%.2f%%", indent, "", sign, percent);
 }
 
 void print_diff_time_unit(uint64_t base_nsec, uint64_t pair_nsec)
