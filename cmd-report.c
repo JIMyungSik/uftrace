@@ -275,17 +275,17 @@ static int cmp_diff_##_field(struct trace_entry *a,			\
 		return a->_field > b->_field ? 1 : -1;			\
 	}								\
 									\
-	if (!diff_percent) {						\
-		diff_a = a->pair->_field - a->_field;			\
-		diff_b = b->pair->_field - b->_field;			\
+	diff_a = a->pair->_field - a->_field;				\
+	diff_b = b->pair->_field - b->_field;				\
 									\
+	if (!diff_percent) {						\
 		if (diff_a == diff_b)					\
 			return 0;					\
 		return diff_a > diff_b ? 1: -1;				\
 	}								\
 									\
-	pcnt_a = 100.0 * (int64_t) a->pair->_field / a->_field;		\
-	pcnt_b = 100.0 * (int64_t) b->pair->_field / b->_field;		\
+	pcnt_a = 100.0 * (int64_t) diff_a / a->_field;			\
+	pcnt_b = 100.0 * (int64_t) diff_b / b->_field;			\
 									\
 	if (pcnt_a == pcnt_b)						\
 		return 0;						\
@@ -375,17 +375,17 @@ static int cmp_diff_time_total(struct trace_entry *a, struct trace_entry *b,
 		return a_time > b_time ? 1 : -1;
 	}
 
-	if (!diff_percent) {
-		a_diff = a_pair_time - a_time;
-		b_diff = b_pair_time - b_time;
+	a_diff = a_pair_time - a_time;
+	b_diff = b_pair_time - b_time;
 
+	if (!diff_percent) {
 		if (a_diff == b_diff)
 			return 0;
 		return a_diff > b_diff ? 1 : -1;
 	}
 
-	a_pcnt = 100.0 * a_pair_time / a_time;
-	b_pcnt = 100.0 * b_pair_time / b_time;
+	a_pcnt = 100.0 * a_diff / a_time;
+	b_pcnt = 100.0 * b_diff / b_time;
 
 	if (a_pcnt == b_pcnt)
 		return 0;
