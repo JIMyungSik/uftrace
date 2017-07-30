@@ -174,6 +174,7 @@ struct opts {
 	char *event;
 	char **run_cmd;
 	char *opt_file;
+	char *diff_policy;
 	int mode;
 	int idx;
 	int depth;
