@@ -278,3 +278,24 @@ void print_diff_time_unit(uint64_t base_nsec, uint64_t pair_nsec)
 	else
 		__print_time_unit(pair_nsec - base_nsec, true);
 }
+
+void print_diff_count(unsigned long base, unsigned long pair)
+{
+	const char *diff_colors[] = {
+		TERM_COLOR_RED,
+		TERM_COLOR_CYAN,
+	};
+	const char *sign = TERM_COLOR_NORMAL;
+	int sign_idx = (pair < base);
+	long diff = pair - base;
+
+	if (diff == 0) {
+		pr_out("%9s", "0");
+		return;
+	}
+
+	if (out_color == COLOR_ON)
+		sign = diff_colors[sign_idx];
+
+	pr_out("%s%+9ld%s", sign, diff, TERM_COLOR_RESET);
+}
